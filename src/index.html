@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>Chess Square Guessing Game</title>
+  <link rel="stylesheet" href="./style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!-- Load Hyperscript -->
+<script src="https://unpkg.com/hyperscript.org@0.9.6"></script>
+
+<script>
+// From https://fedingo.com/how-to-shuffle-array-in-javascript/
+// But put it on Array's prototype so we can call it directly
+Array.prototype.shuffle = 
+function shuffle() {
+  const array = this;
+  let currentIndex = array.length,  randomIndex;
+
+  // While there remain elements to shuffle.
+  while (currentIndex != 0) {
+
+    // Pick a remaining element.
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex--;
+
+    // And swap it with the current element.
+    [array[currentIndex], array[randomIndex]] = [
+      array[randomIndex], array[currentIndex]];
+  }
+
+  return array;
+}
+
+// Easy way to get instanceof into hyperscript
+Object.prototype.isInstanceOf = 
+function isInstanceOf(className) {
+  return this instanceof className
+}
+  
+// Hyperscript doesn't have modulus operator
+Number.prototype.remainder = function (divisor) { return this % divisor; }
+</script>
+<script type="text/hyperscript">
+init
+  -- Global variables
+  set $totalRounds to 10
+  set $secondsToGuess to 10
+  set $files to ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+  set $ranks to ['1', '2', '3', '4', '5', '6', '7', '8']
+  set $squares to []
+  repeat for rank in $ranks
+    repeat for file in $files
+      $squares.push(`${file}${rank}`)
+    end
+  end
+</script>
+
+<main>
+<section class="introduction">
+  <h1>Chess Square Guessing Game</h1>
+  <h5>Learn the names of the chess squares</h5>
+  <p>When you know the names of chess squares you can fluently read descriptions of chess games written in <a href="https://thechessworld.com/articles/general-information/chess-notation-the-complete-guide/" target="_blank">Chess Notation</a>. You can also communicate about chess ideas more easily with others who also know the language.</p>
+  <p>Use this game as practice to learn the names of the chess squares!</p>
+  <p>For additional challenge, play with the <a href="#settings">Settings</a> below</p>
+  <h3>How to Play</h3>
+  <p>
+     <ol>
+       <li>Click the 'Play game' button to start</li>
+       <li>Play a round of the chosen type</li>
+       <li>Go for 10 rounds and see how well you do!</li>
+     </ol>
+  </p>
+  
+  <h4>Round Types</h4>
+  <p>
+    <strong>Find and Click</strong> is the default. The goal is to find a square of a given name.
+    <ol>
+       <li>Read the square name, e.g. <strong>b6</strong></li>
+       <li>Click on the square of that name before time runs out!</li> 
+    </ol>
+  </p>
+
+  <p>
+    In a <strong>Multiple Choice</strong> round, the goal is the opposite: correctly name the highlighted square.
+    <ol>
+       <li>Look at the square which has changed color and contains a question mark ("?").</li>
+       <li>Click on the name of that square before time runs out!</li> 
+    </ol>
+  </p>
+
+  <p>For a challenge, try <strong>Both</strong>, chosen at random, from the <a href="#settings">Settings</a> below.
+</section>
+
+<p>
+  <div>
+    <label><input type="checkbox" _="
+on change
+  show <section.introduction /> when my.checked
+end
+" checked /> Show introduction</label>
+  </div>
+</p>
+
+<h3>Game Board</h3>
+<div class="board" _="
+init 
+  -- Draw the chessboard                   
+  repeat for rank in $ranks index rankIndex
+    make a <.row /> called row
+    put it at the start of me
+    put `
+      <div class='rank label'>${rank}</div>
+      ` at the start of row
+    repeat for file in $files index fileIndex
+      set rankOffset to rankIndex.remainder(2)
+      if (fileIndex + rankOffset).remainder(2) is 0
+        set colorClass to 'black'
+      else
+        set colorClass to ''
+      end
+      put `
+        <button class='cell ${colorClass}' data-name='${file}${rank}'>
+          <span class='name'>
+            ${file}${rank}
+          </span>
+          <span class='highlightLabel'>?</span>
+        </button>
+        ` at the end of row
+    end
+  end
+  
+  make a <.row.labels /> called row
+  put it at the end of me
+  repeat for file in $files
+    put `
+      <div class='file label'>
+        ${file}
+      </div>
+      ` at the end of row
+    end
+end
+
+-- When a cell is clicked                      
+on click
+  set cell to closest <.cell /> to target
+  if no cell then exit end
+  set name to innerHTML of first <.name /> in cell
+  set name to name.trim()                    
+  send guessFindAndClick(name: name) to <.game-runner />
+end
+"></div>
+  
+<div class="play-area">
+  <p class="game-runner" _=
+"
+on startGame
+  hide .play-button
+  show .reset-button
+  show .round-counter
+  -- Make a copy of the list of all squares
+  set :guessSquares to $squares.slice()
+  set :correctGuesses to 0
+  send update(correct: :correctGuesses, total: currentRound) to <.score-counter />
+  call :guessSquares.shuffle()
+ 
+  set currentRound to 1
+  repeat until :guessSquares is empty or currentRound > $totalRounds
+    send update(currentRound: currentRound, totalRounds: $totalRounds) to <.round-counter />
+ 
+    -- Silly trick. `Math.random() < 0.5` is a coin flip, but 
+    -- this select's value can be 0.5 or 0 (always heads) or 1 (always tails)
+    if Math.random() < parseFloat(value of first <.select-round-type />)
+      trigger playMultipleChoiceRound
+    else 
+      trigger playFindAndClickRound
+    end
+   
+    wait for roundOver or resetGame
+    if the type of result is 'resetGame' then exit end
+ send update(correct: :correctGuesses, total: currentRound) to <.score-counter />
+    send start(seconds: 3) to <.round-progress />
+    wait for resetGame or timerIsUp
+    if the type of result is 'resetGame' then exit end
+    repeat for cell in <.cell />
+      cell.blur()
+    end
+    increment currentRound
+  end
+ 
+  put 'Game over' into the next <.simon-says />
+end
+
+on playFindAndClickRound
+  set nextGuess to :guessSquares.pop()
+  put `Click on <strong>${nextGuess}</strong> within ${$secondsToGuess} seconds!` into the next <.simon-says />
+  set roundIsOver to false
+  send start(seconds: $secondsToGuess) to <.round-progress />
+  repeat until roundIsOver
+ 
+    wait for guessFindAndClick or resetGame or timerIsUp
+
+    if the result.isInstanceOf(Event) then
+      if the type of result is 'resetGame'
+        exit
+      end
+      if the type of result is 'guessFindAndClick'
+        set name to name of detail of result
+        if name is nextGuess then
+          put `Nice!` into the next <.simon-says />
+          increment :correctGuesses
+          set roundIsOver to true
+        else
+ put `Close! We wanted ${nextGuess} but you guessed <strong>${name}</strong>` into the next <.simon-says />
+          set roundIsOver to true
+        end
+      end
+      if the type of result is 'timerIsUp'
+        put `Too late!` into the next <.simon-says />
+        set roundIsOver to true
+      end
+    end
+  end
+  send end to <.round-progress />
+  trigger roundOver
+end
+
+on playMultipleChoiceRound
+  set nextGuess to :guessSquares.pop()
+  set highlightedSquare to first <.cell[data-name=${nextGuess}] />
+  add .highlighted to highlightedSquare
+  set choices to [ nextGuess ]
+ 
+  -- Find more unique choices
+  repeat until choices.length is 3
+    set possibleChoice to $squares[Math.floor(Math.random() * $squares.length)]
+    if not choices.includes(possibleChoice) then choices.push(possibleChoice) end
+  end
+ 
+  choices.shuffle()
+ 
+  make a <div.guesses /> called guesses
+  repeat for choice in choices
+    put `<button class='guess' data-name=${choice}>${choice}</button>` at the end of guesses
+  end
+ 
+  put `Click on the correct name within ${$secondsToGuess} seconds!` into the next <.simon-says />
+  put guesses at the end of the next <.simon-says />
+  set roundIsOver to false
+  send start(seconds: $secondsToGuess) to <.round-progress />
+  repeat until roundIsOver
+    wait for guessMultipleChoice or resetGame or timerIsUp
+
+    if the result.isInstanceOf(Event) then
+      if the type of result is 'resetGame'
+        exit
+      end
+      if the type of result is 'guessMultipleChoice'
+        set name to name of detail of result
+        if name is nextGuess then
+          put `Nice!` into the next <.simon-says />
+          increment :correctGuesses
+          set roundIsOver to true
+        else
+          put `Close! We wanted ${nextGuess} but you guessed <strong>${name}</strong>` into the next <.simon-says />
+          set roundIsOver to true
+        end
+      end
+      if the type of result is 'timerIsUp'
+        put `Too late!` into the next <.simon-says />
+        set roundIsOver to true
+      end
+    end
+  end
+  remove .highlighted from <.cell />
+  send end to <.round-progress />
+  trigger roundOver
+end
+
+on resetGame
+  set @disabled of <.reset-button /> to 'disabled'
+  -- put `Resetting...` into the next <.simon-says />
+  -- wait 0.5s
+  send reset to <.simon-says />
+ 
+  show .play-button
+  hide .reset-button
+  hide .round-counter
+  hide .round-progress
+  remove .highlighted from <.cell />
+  remove @disabled from <.reset-button />
+  send end to <.round-progress />
+end
+"
+    >
+    <button _=
+"
+on click send startGame to closest <.game-runner /> then halt the event
+"
+            class="play-button">Play game</button>
+    <button _=
+"
+init hide me
+
+on click send resetGame to closest <.game-runner /> then halt the event
+"
+             style="display: none;" class="reset-button">Reset game</button>
+    <span class="round-counter" style="display: none;" _=
+"
+on update(currentRound, totalRounds)
+  show me
+  put currentRound into <.current-round />
+  put totalRounds into <.total-rounds />
+end
+"
+    >
+      <span class="current-round">1</span> of 
+      <span class="total-rounds">10</span> rounds.
+    </span>
+    <span class="score-counter" style="display: none;" _=
+"
+on update(correct, total)
+  show me
+  put correct into <.correct-guesses />
+  -- put total into <.total-guesses />
+end
+"
+    >
+      <span class="correct-guesses">0</span><!-- of 
+      <span class="total-guesses">0</span> --> correct.
+    </span>
+  </p>
+
+  <p>
+    <span class="simon-says" _= 
+"
+init 
+  set :original to my innerHTML
+
+on reset
+  set my innerHTML to :original
+ 
+-- When a guess is clicked                      
+on click
+  set guess to closest <.guess /> to target
+  if no guess then exit end
+  set name to @data-name of guess
+  send guessMultipleChoice(name: name) to <.game-runner />
+end
+"
+          >Hit 'Play game' to start!</span> 
+  </p>
+  <p>
+    <progress _=
+"
+on start(seconds)
+  show me
+  set secondsStart to Date.now() / 1000
+  trigger update(ratio: 0)
+  repeat until end
+    wait for end or 0.04s
+
+    if the result.isInstanceOf(Event) then
+      if the type of result is 'end'
+        exit
+      end
+    else
+      set now to Date.now() / 1000
+      set ratio to (now - secondsStart) / seconds
+
+      if ratio >= 1 then
+        send timerIsUp to <.game-runner />
+        trigger update(ratio: 1)
+        exit
+      end
+      trigger update(ratio: 1 - ratio)
+      -- Do not trigger roundOver if we haven't elapsed the full time alotted
+    end
+  end
+end
+
+on update(ratio)
+  put ratio into my @value
+  put `${Math.floor(100 * ratio)}%` into me
+end
+"
+              class="round-progress"
+              style="display: none;"
+              max="1"
+              value="1"></progress>
+  </p>
+</div>
+
+<h3 id="settings">Settings</h3>
+<p>
+  <div class="toggle-square-names">
+    <label><input type="checkbox" _="
+on change
+  add .hide-names to .board when not my.checked
+end
+" checked /> Show square names</label>
+  </div>
+  <div>
+    <label><input type="checkbox" _="
+on change
+  add .hide-labels to .board when not my.checked
+end
+" checked /> Show rank and file labels</label>
+  </div>
+  <div>
+    <label><input type="checkbox" _="
+on change
+  add .flipped to .board when not my.checked
+end
+" checked /> Show White's side on the bottom</label>
+  </div>
+  <div>
+    <label><input class="input-seconds-to-guess" type="number" _="
+init 
+  set my @value to $secondsToGuess  
+end
+
+on change
+  set $secondsToGuess to my value
+end
+" value="10" /> Seconds to guess</label>
+  </div>
+  <div>
+    <label>
+      <select class="select-round-type">
+        <option value="0" selected>Find and Click</option>
+        <option value="1">Multiple Choice</option>
+        <option value="0.5">Both</option>
+      </select>
+      Select round types</label>
+  </div>
+</p>
+
+</main>
+<!-- partial -->
+  
+</body>
+</html>
